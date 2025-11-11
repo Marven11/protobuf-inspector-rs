@@ -1,0 +1,197 @@
+use crate::core::{self, read_identifier, read_value};
+use crate::formatter::{FG, indent};
+use crate::types::*;
+use std::collections::HashMap;
+use std::io::Cursor;
+
+pub struct Parser {
+    pub types: HashMap<String, HashMap<u32, (String, String)>>,
+    pub native_types: HashMap<String, Box<dyn TypeHandler>>,
+    pub errors_produced: Vec<String>,
+    pub wire_types_not_matching: bool,
+    pub groups_observed: bool,
+    pub dump_index: usize,
+}
+
+impl Parser {
+    pub fn new() -> Self {
+        let mut parser = Parser {
+            types: HashMap::new(),
+            native_types: HashMap::new(),
+            errors_produced: Vec::new(),
+            wire_types_not_matching: false,
+            groups_observed: false,
+            dump_index: 0,
+        };
+        
+        parser.types.insert("message".to_string(), HashMap::new());
+        parser.types.insert("root".to_string(), HashMap::new());
+        
+        parser.register_native_type("varint", Box::new(VarintHandler));
+        parser.register_native_type("int32", Box::new(Int32Handler));
+        parser.register_native_type("int64", Box::new(Int64Handler));
+        parser.register_native_type("uint32", Box::new(UInt32Handler));
+        parser.register_native_type("uint64", Box::new(UInt64Handler));
+        parser.register_native_type("sint32", Box::new(SInt32Handler));
+        parser.register_native_type("sint64", Box::new(SInt64Handler));
+        parser.register_native_type("bool", Box::new(BoolHandler));
+        parser.register_native_type("enum", Box::new(VarintHandler));
+        parser.register_native_type("32bit", Box::new(Bit32Handler));
+        parser.register_native_type("64bit", Box::new(Bit64Handler));
+        parser.register_native_type("chunk", Box::new(ChunkHandler));
+        parser.register_native_type("bytes", Box::new(BytesHandler));
+        parser.register_native_type("string", Box::new(StringHandler));
+        parser.register_native_type("message", Box::new(ChunkHandler));
+        parser.register_native_type("packed", Box::new(ChunkHandler));
+        parser.register_native_type("float", Box::new(FloatHandler));
+        parser.register_native_type("double", Box::new(DoubleHandler));
+        parser.register_native_type("fixed32", Box::new(Fixed32Handler));
+        parser.register_native_type("sfixed32", Box::new(SFixed32Handler));
+        parser.register_native_type("fixed64", Box::new(Fixed64Handler));
+        parser.register_native_type("sfixed64", Box::new(SFixed64Handler));
+        
+        parser
+    }
+    
+    fn register_native_type(&mut self, name: &str, handler: Box<dyn TypeHandler>) {
+        self.native_types.insert(name.to_string(), handler);
+    }
+    
+    pub fn match_native_type(&self, type_name: &str) -> &dyn TypeHandler {
+        let type_primary = type_name.split_whitespace().next().unwrap_or(type_name);
+        if let Some(handler) = self.native_types.get(type_primary) {
+            handler.as_ref()
+        } else {
+            self.native_types.get("message").unwrap().as_ref()
+        }
+    }
+    
+    pub fn parse_message(&mut self, data: &[u8], type_name: &str) -> Result<String, core::Error> {
+        self.parse_message_with_depth(data, type_name, 0)
+    }
+    
+    fn parse_message_with_depth(&mut self, data: &[u8], type_name: &str, depth: usize) -> Result<String, core::Error> {
+        if depth > 10 {
+            return Ok("recursion depth exceeded".to_string());
+        }
+        
+        let mut cursor = Cursor::new(data);
+        let mut lines = Vec::new();
+        let mut keys_types = HashMap::new();
+        
+        loop {
+            match read_identifier(&mut cursor) {
+                Ok(Some((key, wire_type))) => {
+                    let wire_type_enum = match WireType::from_u8(wire_type) {
+                        Some(wt) => wt,
+                        None => return Err(core::Error::InvalidWireType(wire_type)),
+                    };
+                    
+                    let value_data = match read_value(&mut cursor, wire_type) {
+                        Ok(Some(data)) => data,
+                        Ok(None) => break,
+                        Err(e) => return Err(e),
+                    };
+                    
+                    if wire_type == 3 || wire_type == 4 {
+                        self.groups_observed = true;
+                        let group_type = if wire_type == 3 { "startgroup" } else { "endgroup" };
+                        lines.push(format!("{} <{}> = group (end {})", FG(4, &key.to_string()), group_type, FG(4, &key.to_string())));
+                        continue;
+                    }
+                    
+                    if let Some(&existing_type) = keys_types.get(&key) {
+                        if existing_type != wire_type {
+                            self.wire_types_not_matching = true;
+                        }
+                    }
+                    keys_types.insert(key, wire_type);
+                    
+                    let (field_type, field_name) = self.get_field_type_info(type_name, key);
+                    let actual_type = if field_type == "message" {
+                        self.get_wire_type_name(wire_type)
+                    } else {
+                        &field_type
+                    };
+                    
+                    let handler_wire_type = self.match_native_type(actual_type).wire_type();
+                    
+                    if handler_wire_type != wire_type_enum && field_type != "message" {
+                        self.wire_types_not_matching = true;
+                    }
+                    
+                    let mut parsed_value = self.match_native_type(actual_type).parse(&value_data, actual_type)
+                        .unwrap_or_else(|e| format!("ERROR: {:?}", e));
+                    
+                    // 对于chunk类型，尝试解析为嵌套消息
+                    if actual_type == "chunk" && value_data.len() > 2 && value_data.len() < 100 {
+                        let mut test_cursor = Cursor::new(&value_data);
+                        if let Ok(Some((_, wire))) = read_identifier(&mut test_cursor) {
+                            if wire == 0 || wire == 1 || wire == 2 || wire == 5 {
+                                if let Ok(msg) = self.parse_message_with_depth(&value_data, "message", depth + 1) {
+                                    // 只有当解析结果看起来像有效的protobuf消息时才使用
+                                    if !msg.contains("ERROR") && !msg.contains("empty") && 
+                                       msg.lines().count() <= 3 && msg.contains(":") {
+                                        parsed_value = msg;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    let display_name = if field_name.is_empty() {
+                        format!("<{}>", actual_type)
+                    } else {
+                        field_name
+                    };
+                    
+                    lines.push(format!("{} {} = {}", FG(4, &key.to_string()), display_name, parsed_value));
+                }
+                Ok(None) => break,
+                Err(e) => return Err(e),
+            }
+        }
+        
+        if lines.is_empty() {
+            lines.push("empty".to_string());
+        }
+        
+        Ok(format!("{}:\n{}", type_name, indent(&lines.join("\n"), None)))
+    }
+    
+    fn is_valid_protobuf(&self, data: &[u8]) -> bool {
+        if data.len() < 2 {
+            return false;
+        }
+        let mut cursor = Cursor::new(data);
+        if let Ok(Some((_, wire_type))) = read_identifier(&mut cursor) {
+            if wire_type <= 5 {
+                if let Ok(Some(_)) = read_value(&mut cursor, wire_type) {
+                    return cursor.position() as usize <= data.len();
+                }
+            }
+        }
+        false
+    }
+    
+    fn get_field_type_info(&self, type_name: &str, key: u32) -> (String, String) {
+        if let Some(type_map) = self.types.get(type_name) {
+            if let Some((type_str, field_str)) = type_map.get(&key) {
+                return (type_str.clone(), field_str.clone());
+            }
+        }
+        ("message".to_string(), String::new())
+    }
+    
+    fn get_wire_type_name(&self, wire_type: u8) -> &'static str {
+        match wire_type {
+            0 => "varint",
+            1 => "64bit",
+            2 => "chunk",
+            3 => "startgroup",
+            4 => "endgroup",
+            5 => "32bit",
+            _ => "message",
+        }
+    }
+}
