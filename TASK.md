@@ -14,6 +14,8 @@
 
 使用terminal工具运行并测试rust版的输出和python版的是否一致
 
+显示bytes时不一定需要和protobuf-inspector相同：可以直接使用rust的Debug显示bytes
+
 # 资源
 
 ./protobuf-inspector存放了protobuf-inspector的源码
