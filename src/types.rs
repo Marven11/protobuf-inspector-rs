@@ -1,5 +1,5 @@
 use crate::core::{parse_varint_bytes, zigzag_decode};
-use crate::formatter::{fg, FG};
+use crate::formatter::{foreground, foreground_bold};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WireType {
@@ -38,7 +38,7 @@ pub struct ChunkHandler;
 impl TypeHandler for VarintHandler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let val = parse_varint_bytes(data)?;
-        Ok(format!("{}", FG(3, &val.to_string())))
+        Ok(format!("{}", foreground_bold(3, &val.to_string())))
     }
     
     fn wire_type(&self) -> WireType {
@@ -92,7 +92,7 @@ impl TypeHandler for ChunkHandler {
         
         if let Ok(s) = std::str::from_utf8(data) {
             if is_probable_string(s) {
-                return Ok(format!("{}", fg(2, &format!("\"{}\"", s))));
+                return Ok(format!("{}", foreground(2, &format!("\"{}\"", s))));
             }
         }
         
@@ -159,7 +159,7 @@ impl TypeHandler for SInt32Handler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let val = parse_varint_bytes(data)?;
         let decoded = zigzag_decode(val);
-        Ok(format!("{}", FG(3, &decoded.to_string())))
+        Ok(format!("{}", foreground_bold(3, &decoded.to_string())))
     }
     
     fn wire_type(&self) -> WireType {
@@ -171,7 +171,7 @@ impl TypeHandler for SInt64Handler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let val = parse_varint_bytes(data)?;
         let decoded = zigzag_decode(val);
-        Ok(format!("{}", FG(3, &decoded.to_string())))
+        Ok(format!("{}", foreground_bold(3, &decoded.to_string())))
     }
     
     fn wire_type(&self) -> WireType {
@@ -188,7 +188,7 @@ impl TypeHandler for Int32Handler {
         if val >= (1u64 << 31) && val < u64::MAX.saturating_sub(20000) {
             return Err(crate::core::Error::InvalidVarint);
         }
-        Ok(format!("{}", FG(3, &((val as i64).to_string()))))
+        Ok(format!("{}", foreground_bold(3, &((val as i64).to_string()))))
     }
     
     fn wire_type(&self) -> WireType {
@@ -202,7 +202,7 @@ impl TypeHandler for Int64Handler {
         if val >= (1u64 << 63) {
             val = val.wrapping_sub(u64::MAX).wrapping_sub(1);
         }
-        Ok(format!("{}", FG(3, &((val as i64).to_string()))))
+        Ok(format!("{}", foreground_bold(3, &((val as i64).to_string()))))
     }
     
     fn wire_type(&self) -> WireType {
@@ -216,7 +216,7 @@ impl TypeHandler for UInt32Handler {
         if val >= (1u64 << 32) {
             return Err(crate::core::Error::InvalidVarint);
         }
-        Ok(format!("{}", FG(3, &val.to_string())))
+        Ok(format!("{}", foreground_bold(3, &val.to_string())))
     }
     
     fn wire_type(&self) -> WireType {
@@ -227,7 +227,7 @@ impl TypeHandler for UInt32Handler {
 impl TypeHandler for UInt64Handler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let val = parse_varint_bytes(data)?;
-        Ok(format!("{}", FG(3, &val.to_string())))
+        Ok(format!("{}", foreground_bold(3, &val.to_string())))
     }
     
     fn wire_type(&self) -> WireType {
@@ -241,7 +241,7 @@ impl TypeHandler for BoolHandler {
         if val >= (1u64 << 1) {
             return Err(crate::core::Error::InvalidVarint);
         }
-        Ok(format!("{}", FG(3, &val.to_string())))
+        Ok(format!("{}", foreground_bold(3, &val.to_string())))
     }
     
     fn wire_type(&self) -> WireType {
@@ -253,7 +253,7 @@ impl TypeHandler for StringHandler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let s = std::str::from_utf8(data)
             .map_err(|_| crate::core::Error::Eof)?;
-        Ok(format!("{}", fg(2, &format!("\"{}\"", s))))
+        Ok(format!("{}", foreground(2, &format!("\"{}\"", s))))
     }
     
     fn wire_type(&self) -> WireType {
@@ -283,7 +283,7 @@ impl TypeHandler for FloatHandler {
             return Err(crate::core::Error::Eof);
         }
         let val = f32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        Ok(format!("{}", FG(3, &format!("{:+#?}", val))))
+        Ok(format!("{}", foreground_bold(3, &format!("{:+#?}", val))))
     }
     
     fn wire_type(&self) -> WireType {
@@ -299,7 +299,7 @@ impl TypeHandler for DoubleHandler {
         let val = f64::from_le_bytes([
             data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]
         ]);
-        Ok(format!("{}", FG(3, &format!("{:+#?}", val))))
+        Ok(format!("{}", foreground_bold(3, &format!("{:+#?}", val))))
     }
     
     fn wire_type(&self) -> WireType {
@@ -313,7 +313,7 @@ impl TypeHandler for Fixed32Handler {
             return Err(crate::core::Error::Eof);
         }
         let val = i32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        Ok(format!("{}", FG(3, &val.to_string())))
+        Ok(format!("{}", foreground_bold(3, &val.to_string())))
     }
     
     fn wire_type(&self) -> WireType {
@@ -327,7 +327,7 @@ impl TypeHandler for SFixed32Handler {
             return Err(crate::core::Error::Eof);
         }
         let val = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        Ok(format!("{}", FG(3, &val.to_string())))
+        Ok(format!("{}", foreground_bold(3, &val.to_string())))
     }
     
     fn wire_type(&self) -> WireType {
@@ -343,7 +343,7 @@ impl TypeHandler for Fixed64Handler {
         let val = i64::from_le_bytes([
             data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]
         ]);
-        Ok(format!("{}", FG(3, &val.to_string())))
+        Ok(format!("{}", foreground_bold(3, &val.to_string())))
     }
     
     fn wire_type(&self) -> WireType {
@@ -359,7 +359,7 @@ impl TypeHandler for SFixed64Handler {
         let val = u64::from_le_bytes([
             data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]
         ]);
-        Ok(format!("{}", FG(3, &val.to_string())))
+        Ok(format!("{}", foreground_bold(3, &val.to_string())))
     }
     
     fn wire_type(&self) -> WireType {

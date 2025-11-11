@@ -1,4 +1,4 @@
-pub fn fg(color: u8, text: &str) -> String {
+pub fn foreground(color: u8, text: &str) -> String {
     format!("\x1b[3{}m{}\x1b[m", color, text)
 }
 
@@ -10,12 +10,12 @@ pub fn dim(text: &str) -> String {
     format!("\x1b[2m{}\x1b[m", text)
 }
 
-pub fn fg_color(color: u8) -> impl Fn(&str) -> String {
-    move |text: &str| fg(color, text)
+pub fn foreground_color(color: u8) -> impl Fn(&str) -> String {
+    move |text: &str| foreground(color, text)
 }
 
-pub fn FG(color: u8, text: &str) -> String {
-    bold(&fg(color, text))
+pub fn foreground_bold(color: u8, text: &str) -> String {
+    bold(&foreground(color, text))
 }
 
 pub fn indent(text: &str, indent_str: Option<&str>) -> String {

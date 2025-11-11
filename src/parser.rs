@@ -1,5 +1,5 @@
 use crate::core::{self, read_identifier, read_value};
-use crate::formatter::{FG, indent};
+use crate::formatter::{foreground_bold, indent};
 use crate::types::*;
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -7,10 +7,7 @@ use std::io::Cursor;
 pub struct Parser {
     pub types: HashMap<String, HashMap<u32, (String, String)>>,
     pub native_types: HashMap<String, Box<dyn TypeHandler>>,
-    pub errors_produced: Vec<String>,
     pub wire_types_not_matching: bool,
-    pub groups_observed: bool,
-    pub dump_index: usize,
 }
 
 impl Parser {
@@ -18,10 +15,7 @@ impl Parser {
         let mut parser = Parser {
             types: HashMap::new(),
             native_types: HashMap::new(),
-            errors_produced: Vec::new(),
             wire_types_not_matching: false,
-            groups_observed: false,
-            dump_index: 0,
         };
         
         parser.types.insert("message".to_string(), HashMap::new());
@@ -94,9 +88,8 @@ impl Parser {
                     };
                     
                     if wire_type == 3 || wire_type == 4 {
-                        self.groups_observed = true;
                         let group_type = if wire_type == 3 { "startgroup" } else { "endgroup" };
-                        lines.push(format!("{} <{}> = group (end {})", FG(4, &key.to_string()), group_type, FG(4, &key.to_string())));
+                        lines.push(format!("{} <{}> = group (end {})", foreground_bold(4, &key.to_string()), group_type, foreground_bold(4, &key.to_string())));
                         continue;
                     }
                     
@@ -145,7 +138,7 @@ impl Parser {
                         field_name
                     };
                     
-                    lines.push(format!("{} {} = {}", FG(4, &key.to_string()), display_name, parsed_value));
+                    lines.push(format!("{} {} = {}", foreground_bold(4, &key.to_string()), display_name, parsed_value));
                 }
                 Ok(None) => break,
                 Err(e) => return Err(e),
@@ -157,21 +150,6 @@ impl Parser {
         }
         
         Ok(format!("{}:\n{}", type_name, indent(&lines.join("\n"), None)))
-    }
-    
-    fn is_valid_protobuf(&self, data: &[u8]) -> bool {
-        if data.len() < 2 {
-            return false;
-        }
-        let mut cursor = Cursor::new(data);
-        if let Ok(Some((_, wire_type))) = read_identifier(&mut cursor) {
-            if wire_type <= 5 {
-                if let Ok(Some(_)) = read_value(&mut cursor, wire_type) {
-                    return cursor.position() as usize <= data.len();
-                }
-            }
-        }
-        false
     }
     
     fn get_field_type_info(&self, type_name: &str, key: u32) -> (String, String) {
