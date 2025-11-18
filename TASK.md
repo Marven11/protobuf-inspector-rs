@@ -1,22 +1,21 @@
 # 任务
 
-你需要在当前文件夹使用rust复刻protobuf-inspector的功能
+我需要仿造./example-parser.rs的逻辑猜测一个LEN到底是string还是message等
 
-完成一个功能相同的protobuf的解析器，使其可以解析`my-blob`文件输出和protobuf-inspector `python main.py < my-blob`相同的输出
+修改当前项目protobuf-inspector-rs让其使用类似./example-parser.rs的逻辑猜测一个LEN，但是保持输出格式和protobuf-inspector类似
 
-但是protobuf-inspector的代码写得很烂，工程结构也不同，改进它的工程结构，把函数放在正确的位置！
+注意：protobuf-inspector的代码写得很烂，工程结构也不同，不要过度参考！
 
 # 要求
 
-实现一个parse_main函数，输入是`&[u8]`, 输出是Result<_, Error>, 错误可以为EOF
+不要保留example-parser.rs的名字，加入到代码库中的文件名应该更好
 
-解析数据的函数和格式化数据的函数分开
-
-使用terminal工具运行并测试rust版的输出和python版的是否一致
-
-显示bytes时不一定需要和protobuf-inspector相同：可以直接使用rust的Debug显示bytes
+需要增强example-parser.rs的逻辑，补全对应代码
 
 # 资源
 
 ./protobuf-inspector存放了protobuf-inspector的源码
 
+./protobuf-inspector/my-blob是用于测试的protobuf数据
+
+./example-parser.rs
