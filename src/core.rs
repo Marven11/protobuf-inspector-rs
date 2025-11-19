@@ -4,7 +4,7 @@ use std::io::{self, Read};
 pub enum Error {
     Eof,
     InvalidVarint,
-    InvalidWireType(u8),
+    InvalidWireType,
 }
 
 pub fn read_varint<R: Read>(reader: &mut R) -> Result<Option<u64>, Error> {
@@ -107,7 +107,7 @@ pub fn read_value<R: Read>(reader: &mut R, wire_type: u8) -> Result<Option<Vec<u
                 Err(_) => Err(Error::Eof),
             }
         }
-        _ => Err(Error::InvalidWireType(wire_type)),
+        _ => Err(Error::InvalidWireType),
     }
 }
 

@@ -140,11 +140,10 @@ impl Parser {
     }
     
     fn check_wire_type_consistency(&mut self, key: u32, wire_type: u8, keys_types: &mut HashMap<u32, u8>) {
-        if let Some(&existing_type) = keys_types.get(&key) {
-            if existing_type != wire_type {
+        if let Some(&existing_type) = keys_types.get(&key)
+            && existing_type != wire_type {
                 self.wire_types_not_matching = true;
             }
-        }
         keys_types.insert(key, wire_type);
     }
     
@@ -170,11 +169,10 @@ impl Parser {
         let mut parsed_value = self.parse_value_with_type(actual_type, value_data)?;
         
         // 尝试解析嵌套消息
-        if actual_type == "chunk" && self.should_try_nested_parse(value_data) {
-            if let Ok(nested_msg) = self.try_parse_nested_message(value_data, depth) {
+        if actual_type == "chunk" && self.should_try_nested_parse(value_data)
+            && let Ok(nested_msg) = self.try_parse_nested_message(value_data, depth) {
                 parsed_value = nested_msg;
             }
-        }
         
         let display_name = if field_name.is_empty() {
             format!("<{}>", actual_type)
@@ -230,11 +228,10 @@ impl Parser {
     }
     
     fn get_field_type_info(&self, type_name: &str, key: u32) -> (String, String) {
-        if let Some(type_map) = self.types.get(type_name) {
-            if let Some((type_str, field_str)) = type_map.get(&key) {
+        if let Some(type_map) = self.types.get(type_name)
+            && let Some((type_str, field_str)) = type_map.get(&key) {
                 return (type_str.clone(), field_str.clone());
             }
-        }
         ("message".to_string(), String::new())
     }
     

@@ -38,7 +38,7 @@ pub struct ChunkHandler;
 impl TypeHandler for VarintHandler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let val = parse_varint_bytes(data)?;
-        Ok(format!("{}", foreground_bold(3, &val.to_string())))
+        Ok(foreground_bold(3, &val.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -90,10 +90,11 @@ impl TypeHandler for ChunkHandler {
             return Ok("empty chunk".to_string());
         }
         
-        // 首先尝试作为字符串显示
+        // 首先尝试作为字符串显示，对于任何有效的UTF-8都尝试显示
         if let Ok(s) = std::str::from_utf8(data) {
-            if is_probable_string(s) {
-                return Ok(format!("{}", foreground(2, &format!("\"{}\"", s))));
+            // 只要不是纯控制字符或二进制数据，就显示为字符串
+            if is_likely_text(s) {
+                return Ok(foreground(2, &format!("\"{}\"", s)).to_string());
             }
         }
         
@@ -103,13 +104,14 @@ impl TypeHandler for ChunkHandler {
                 // 如果猜测为消息，显示为嵌套消息格式
                 Ok(format!("message ({} bytes)", data.len()))
             }
-            Ok(false) => {
-                // 如果猜测不是消息，显示为bytes
-                Ok(format!("bytes ({:?})", data))
-            }
-            Err(_) => {
-                // 猜测过程中出错，保守显示为bytes
-                Ok(format!("bytes ({:?})", data))
+            Ok(false) | Err(_) => {
+                // 如果猜测不是消息或猜测失败，显示为bytes的hex dump
+                let hex_dump = crate::formatter::hex_dump(data);
+                if !data.is_empty() {
+                    Ok(format!("bytes ({})\n{}", data.len(), crate::formatter::indent(&hex_dump, None)))
+                } else {
+                    Ok("bytes (0)".to_string())
+                }
             }
         }
     }
@@ -119,39 +121,28 @@ impl TypeHandler for ChunkHandler {
     }
 }
 
-fn is_probable_string(s: &str) -> bool {
+fn is_likely_text(s: &str) -> bool {
     let total = s.len();
     if total == 0 {
         return false;
     }
     
     let mut controlchars = 0;
-    let mut printable = 0;
     
     for c in s.chars() {
         let c_val = c as u32;
-        // 控制字符（除了常见的空白字符）
+        // 只排除真正的控制字符（除了常见的空白字符）
         if c_val < 0x20 && c != '\n' && c != '\t' && c != '\r' || c_val == 0x7F {
             controlchars += 1;
         }
-        // 可打印字符：字母、数字、标点、中文等
-        if c.is_alphanumeric() || c.is_whitespace() || 
-           c_val >= 0x4E00 && c_val <= 0x9FFF || // 常用汉字
-           c_val >= 0x3400 && c_val <= 0x4DBF || // 扩展汉字
-           c_val >= 0x2000 && c_val <= 0x206F || // 常用标点
-           c_val >= 0x3000 && c_val <= 0x303F {  // CJK符号和标点
-            printable += 1;
-        }
     }
     
-    // 允许少量控制字符
-    if controlchars as f64 / total as f64 > 0.05 {
+    // 允许最多20%的控制字符
+    if controlchars as f64 / total as f64 > 0.2 {
         return false;
     }
-    // 至少80%的字符应该是可打印的
-    if (printable as f64) / (total as f64) < 0.8 {
-        return false;
-    }
+    
+    // 如果字符串长度合适且控制字符不多，就认为是文本
     true
 }
 
@@ -175,7 +166,7 @@ impl TypeHandler for SInt32Handler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let val = parse_varint_bytes(data)?;
         let decoded = zigzag_decode(val);
-        Ok(format!("{}", foreground_bold(3, &decoded.to_string())))
+        Ok(foreground_bold(3, &decoded.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -187,7 +178,7 @@ impl TypeHandler for SInt64Handler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let val = parse_varint_bytes(data)?;
         let decoded = zigzag_decode(val);
-        Ok(format!("{}", foreground_bold(3, &decoded.to_string())))
+        Ok(foreground_bold(3, &decoded.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -204,7 +195,7 @@ impl TypeHandler for Int32Handler {
         if val >= (1u64 << 31) && val < u64::MAX.saturating_sub(20000) {
             return Err(crate::core::Error::InvalidVarint);
         }
-        Ok(format!("{}", foreground_bold(3, &((val as i64).to_string()))))
+        Ok(foreground_bold(3, &((val as i64).to_string())).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -218,7 +209,7 @@ impl TypeHandler for Int64Handler {
         if val >= (1u64 << 63) {
             val = val.wrapping_sub(u64::MAX).wrapping_sub(1);
         }
-        Ok(format!("{}", foreground_bold(3, &((val as i64).to_string()))))
+        Ok(foreground_bold(3, &((val as i64).to_string())).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -232,7 +223,7 @@ impl TypeHandler for UInt32Handler {
         if val >= (1u64 << 32) {
             return Err(crate::core::Error::InvalidVarint);
         }
-        Ok(format!("{}", foreground_bold(3, &val.to_string())))
+        Ok(foreground_bold(3, &val.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -243,7 +234,7 @@ impl TypeHandler for UInt32Handler {
 impl TypeHandler for UInt64Handler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let val = parse_varint_bytes(data)?;
-        Ok(format!("{}", foreground_bold(3, &val.to_string())))
+        Ok(foreground_bold(3, &val.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -257,7 +248,7 @@ impl TypeHandler for BoolHandler {
         if val >= (1u64 << 1) {
             return Err(crate::core::Error::InvalidVarint);
         }
-        Ok(format!("{}", foreground_bold(3, &val.to_string())))
+        Ok(foreground_bold(3, &val.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -269,7 +260,7 @@ impl TypeHandler for StringHandler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         let s = std::str::from_utf8(data)
             .map_err(|_| crate::core::Error::Eof)?;
-        Ok(format!("{}", foreground(2, &format!("\"{}\"", s))))
+        Ok(foreground(2, &format!("\"{}\"", s)).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -279,12 +270,18 @@ impl TypeHandler for StringHandler {
 
 impl TypeHandler for BytesHandler {
     fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
-        // 显示bytes长度和hex dump
-        let hex_dump = crate::formatter::hex_dump(data);
-        if data.len() > 0 {
-            Ok(format!("bytes ({})\n{}", data.len(), crate::formatter::indent(&hex_dump, None)))
+        // 先尝试UTF-8解码
+        if let Ok(s) = std::str::from_utf8(data) {
+            // 如果解码成功，显示为字符串
+            Ok(foreground(2, &format!("\"{}\"", s)).to_string())
         } else {
-            Ok("bytes (0)".to_string())
+            // 如果解码失败，显示bytes长度和hex dump
+            let hex_dump = crate::formatter::hex_dump(data);
+            if !data.is_empty() {
+                Ok(format!("bytes ({})\n{}", data.len(), crate::formatter::indent(&hex_dump, None)))
+            } else {
+                Ok("bytes (0)".to_string())
+            }
         }
     }
     
@@ -299,7 +296,7 @@ impl TypeHandler for FloatHandler {
             return Err(crate::core::Error::Eof);
         }
         let val = f32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        Ok(format!("{}", foreground_bold(3, &format!("{:+#?}", val))))
+        Ok(foreground_bold(3, &format!("{:+#?}", val)).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -315,7 +312,7 @@ impl TypeHandler for DoubleHandler {
         let val = f64::from_le_bytes([
             data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]
         ]);
-        Ok(format!("{}", foreground_bold(3, &format!("{:+#?}", val))))
+        Ok(foreground_bold(3, &format!("{:+#?}", val)).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -329,7 +326,7 @@ impl TypeHandler for Fixed32Handler {
             return Err(crate::core::Error::Eof);
         }
         let val = i32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        Ok(format!("{}", foreground_bold(3, &val.to_string())))
+        Ok(foreground_bold(3, &val.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -343,7 +340,7 @@ impl TypeHandler for SFixed32Handler {
             return Err(crate::core::Error::Eof);
         }
         let val = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        Ok(format!("{}", foreground_bold(3, &val.to_string())))
+        Ok(foreground_bold(3, &val.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -359,7 +356,7 @@ impl TypeHandler for Fixed64Handler {
         let val = i64::from_le_bytes([
             data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]
         ]);
-        Ok(format!("{}", foreground_bold(3, &val.to_string())))
+        Ok(foreground_bold(3, &val.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {
@@ -375,7 +372,7 @@ impl TypeHandler for SFixed64Handler {
         let val = u64::from_le_bytes([
             data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]
         ]);
-        Ok(format!("{}", foreground_bold(3, &val.to_string())))
+        Ok(foreground_bold(3, &val.to_string()).to_string())
     }
     
     fn wire_type(&self) -> WireType {

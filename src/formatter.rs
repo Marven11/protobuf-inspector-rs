@@ -6,13 +6,7 @@ pub fn bold(text: &str) -> String {
     format!("\x1b[1m{}\x1b[m", text)
 }
 
-pub fn dim(text: &str) -> String {
-    format!("\x1b[2m{}\x1b[m", text)
-}
 
-pub fn foreground_color(color: u8) -> impl Fn(&str) -> String {
-    move |text: &str| foreground(color, text)
-}
 
 pub fn foreground_bold(color: u8, text: &str) -> String {
     bold(&foreground(color, text))
@@ -54,7 +48,7 @@ pub fn hex_dump(data: &[u8]) -> String {
         let printable: String = chunk
             .iter()
             .map(|&b| {
-                if b >= 0x20 && b < 0x7F {
+                if (0x20..0x7F).contains(&b) {
                     b as char
                 } else {
                     '.'

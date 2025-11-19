@@ -23,7 +23,7 @@ pub fn guess_is_message(data: &[u8]) -> Result<bool, GuesserError> {
         };
 
         // 检查field number范围
-        if field_number == 0 || (19000 <= field_number && field_number <= 19999) {
+        if field_number == 0 || (19000..=19999).contains(&field_number) {
             return Err(GuesserError::InvalidData);
         }
 
