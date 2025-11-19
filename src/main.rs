@@ -1,5 +1,6 @@
 mod core;
 mod formatter;
+mod guesser;
 mod parser;
 mod types;
 

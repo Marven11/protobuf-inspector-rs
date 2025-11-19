@@ -85,24 +85,32 @@ impl TypeHandler for Bit64Handler {
 }
 
 impl TypeHandler for ChunkHandler {
-    fn parse(&self, data: &[u8], type_name: &str) -> Result<String, crate::core::Error> {
+    fn parse(&self, data: &[u8], _type_name: &str) -> Result<String, crate::core::Error> {
         if data.is_empty() {
             return Ok("empty chunk".to_string());
         }
         
+        // 首先尝试作为字符串显示
         if let Ok(s) = std::str::from_utf8(data) {
             if is_probable_string(s) {
                 return Ok(format!("{}", foreground(2, &format!("\"{}\"", s))));
             }
         }
         
-        // 对于chunk类型，尝试解析为嵌套消息
-        if type_name == "chunk" {
-            // 使用Rust的Debug格式显示bytes
-            Ok(format!("bytes ({:?})", data))
-        } else {
-            // 对于其他类型，直接显示bytes
-            Ok(format!("bytes ({:?})", data))
+        // 使用增强的猜测逻辑决定如何显示所有chunk数据
+        match crate::guesser::guess_is_message(data) {
+            Ok(true) => {
+                // 如果猜测为消息，显示为嵌套消息格式
+                Ok(format!("message ({} bytes)", data.len()))
+            }
+            Ok(false) => {
+                // 如果猜测不是消息，显示为bytes
+                Ok(format!("bytes ({:?})", data))
+            }
+            Err(_) => {
+                // 猜测过程中出错，保守显示为bytes
+                Ok(format!("bytes ({:?})", data))
+            }
         }
     }
     
@@ -118,22 +126,30 @@ fn is_probable_string(s: &str) -> bool {
     }
     
     let mut controlchars = 0;
-    let mut alnum = 0;
+    let mut printable = 0;
     
     for c in s.chars() {
-        let c = c as u32;
-        if c < 0x20 || c == 0x7F {
+        let c_val = c as u32;
+        // 控制字符（除了常见的空白字符）
+        if c_val < 0x20 && c != '\n' && c != '\t' && c != '\r' || c_val == 0x7F {
             controlchars += 1;
         }
-        if (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) || (c >= 0x30 && c <= 0x39) {
-            alnum += 1;
+        // 可打印字符：字母、数字、标点、中文等
+        if c.is_alphanumeric() || c.is_whitespace() || 
+           c_val >= 0x4E00 && c_val <= 0x9FFF || // 常用汉字
+           c_val >= 0x3400 && c_val <= 0x4DBF || // 扩展汉字
+           c_val >= 0x2000 && c_val <= 0x206F || // 常用标点
+           c_val >= 0x3000 && c_val <= 0x303F {  // CJK符号和标点
+            printable += 1;
         }
     }
     
-    if controlchars as f64 / total as f64 > 0.1 {
+    // 允许少量控制字符
+    if controlchars as f64 / total as f64 > 0.05 {
         return false;
     }
-    if (alnum as f64) / (total as f64) < 0.5 {
+    // 至少80%的字符应该是可打印的
+    if (printable as f64) / (total as f64) < 0.8 {
         return false;
     }
     true

@@ -210,18 +210,23 @@ impl Parser {
     }
     
     fn try_parse_nested_message(&mut self, value_data: &[u8], depth: usize) -> Result<String, core::Error> {
-        let mut test_cursor = Cursor::new(value_data);
-        if let Ok(Some((_, wire))) = read_identifier(&mut test_cursor) {
-            if wire == 0 || wire == 1 || wire == 2 || wire == 5 {
+        // 使用增强的猜测逻辑来决定是否尝试解析为嵌套消息
+        match crate::guesser::guess_is_message(value_data) {
+            Ok(true) => {
+                // 猜测为消息，尝试解析
                 let msg = self.parse_message_with_depth(value_data, "message", depth + 1)?;
                 // 只有当解析结果看起来像有效的protobuf消息时才使用
                 if !msg.contains("ERROR") && !msg.contains("empty") && 
-                   msg.lines().count() <= 3 && msg.contains(":") {
+                   msg.lines().count() <= 5 && msg.contains(":") {
                     return Ok(msg);
                 }
+                Err(core::Error::InvalidVarint)
+            }
+            Ok(false) | Err(_) => {
+                // 猜测不是消息或猜测失败，不尝试嵌套解析
+                Err(core::Error::InvalidVarint)
             }
         }
-        Err(core::Error::InvalidVarint)
     }
     
     fn get_field_type_info(&self, type_name: &str, key: u32) -> (String, String) {
